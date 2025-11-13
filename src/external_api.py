@@ -36,11 +36,11 @@ def convert_to_rub(amount, currency: str) -> float:
         load_dotenv()
         api_token = os.getenv("exchangerate-api")
 
-        # url = "https://api.apilayer.com/exchangerates_data/convert"
+        url = "https://api.apilayer.com/exchangerates_data/convert"
 
-        # headers = {
-        #     "apikey": "WkzH6EmMSSbRCQkuUkGoT2E1n6K5wTKi"
-        # }
+        headers = {
+            "apikey": "WkzH6EmMSSbRCQkuUkGoT2E1n6K5wTKi"
+        }
 
         url = f"https://v6.exchangerate-api.com/v6/{api_token}/latest/RUB"
         headers = {"apikey": f"{api_token}"}
