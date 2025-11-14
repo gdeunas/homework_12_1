@@ -1,4 +1,4 @@
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -34,36 +34,44 @@ def test_calc_amount(transactions, expected):
     assert calc_amount(transactions) == expected
 
 
-@patch("src.external_api.convert_to_rub")
-def test_calc_amount_with_mock_convert(mock_convert):
-    mock_convert.side_effect = lambda amount, currency: (
-        amount * 75 if currency == "USD" else amount * 85
-    )
-
-    transactions = [
-        {"operationAmount": {"amount": "10", "currency": {"code": "USD"}}},
-        {"operationAmount": {"amount": "20", "currency": {"code": "EUR"}}},
-        {"operationAmount": {"amount": "1000", "currency": {"code": "RUB"}}},
-    ]
-    result = calc_amount(transactions)
-    assert result == 3450.0
+transactions_sample = [
+    {"operationAmount": {"amount": "100", "currency": {"code": "RUB"}}},
+    {"operationAmount": {"amount": "10", "currency": {"code": "USD"}}},
+    {"operationAmount": {"amount": "20", "currency": {"code": "EUR"}}},
+]
 
 
-@patch("requests.get")
-def test_convert_to_rub(mock_get):
-    mock_response = Mock()
-    mock_response.json.return_value = {"conversion_rates": {"USD": 0.013, "EUR": 0.011}}
-    mock_get.return_value = mock_response
+@patch("src.external_api.requests.request")
+@patch("src.external_api.os.getenv")
+def test_calc_amount_total(mock_getenv, mock_request):
+    mock_getenv.return_value = "fake_api_key"
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {"rates": {"USD": 0.013, "EUR": 0.011}}
+    mock_request.return_value = mock_response
 
-    amount_usd = convert_to_rub(100, "USD")
-    expected_usd = round(100 * round(1 / 0.013, 2), 2)
-    assert amount_usd == expected_usd
+    total = calc_amount(transactions_sample)
+    expected = 100 + 10 / 0.013 + 20 / 0.011
+    assert abs(total - expected) < 0.01
 
-    amount_eur = convert_to_rub(100, "EUR")
-    expected_eur = round(100 * round(1 / 0.011, 2), 2)
-    assert amount_eur == expected_eur
 
-    api_token = "YOUR_API_TOKEN"
-    # expected_url = f"https://v6.exchangerate-api.com/v6/{api_token}/latest/RUB"
-    expected_url = "https://api.apilayer.com/exchangerates_data/convert"
-    mock_get.assert_called()
+def test_calc_amount_empty_list():
+    assert calc_amount([]) == 0.0
+
+
+def test_calc_amount_none():
+    assert calc_amount(None) == 0.0
+
+
+@patch("src.external_api.requests.request")
+@patch("src.external_api.os.getenv")
+def test_convert_to_rub_correct_conversion(mock_getenv, mock_request):
+    mock_getenv.return_value = "fake_api_key"
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {"rates": {"USD": 0.013, "EUR": 0.011}}
+    mock_request.return_value = mock_response
+
+    result = convert_to_rub(transactions_sample)
+    expected = 10 / 0.013 + 20 / 0.011
+    assert abs(result - expected) < 0.01

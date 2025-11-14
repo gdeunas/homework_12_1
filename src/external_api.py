@@ -1,61 +1,84 @@
 import os
+from json import JSONDecodeError
+from typing import Union
 
 import requests
 from dotenv import load_dotenv
 
 
-def calc_amount(transactions) -> float:
-    """Реализуйте функцию, которая принимает на вход транзакцию и возвращает сумму транзакции (
-    amount) в рублях, тип данных — float. Если транзакция была в USD или EUR,
-    происходит обращение к внешнему API для получения текущего курса валют и конвертации суммы операции в рубли.
-    Для конвертации валюты воспользуйтесь Exchange Rates Data API: https://apilayer.com/exchangerates_data-api.
-    Функцию конвертации поместите в модуль external_api"""
+def calc_amount(transactions: Union[list[dict] | None]) -> float:
+    """Calculate total amount in RUB from transactions, converting USD and EUR."""
     s_amount = 0.0
     try:
         if transactions:
-            for transaction in transactions:
-                if transaction["operationAmount"]["currency"]["code"] == "USD":
-                    s_amount += convert_to_rub(
-                        float(transaction["operationAmount"]["amount"]), "USD"
-                    )
-                elif transaction["operationAmount"]["currency"]["code"] == "EUR":
-                    s_amount += convert_to_rub(
-                        float(transaction["operationAmount"]["amount"]), "EUR"
-                    )
-                elif transaction["operationAmount"]["currency"]["code"] == "RUB":
-                    s_amount += float(transaction["operationAmount"]["amount"])
-    except KeyError:
-        # действия если ключа нет
+            s_amount += convert_to_rub(transactions)
+            s_amount += sum(
+                float(t["operationAmount"]["amount"])
+                for t in transactions
+                if t["operationAmount"]["currency"]["code"] == "RUB"
+            )
+    except (KeyError, TypeError):
         pass
-    return round(float(s_amount), 2)
+    return round(s_amount, 2)
 
 
-def convert_to_rub(amount, currency: str) -> float:
-    """конвертация суммы операции в рубли"""
+def convert_to_rub(transactions: list[dict]) -> float:
+    """Convert USD and EUR amounts in transactions to RUB."""
+    s_amount = 0.0
     try:
         load_dotenv()
-        api_token = os.getenv("exchangerate-api")
+        # api_token = os.getenv("EXCHANGE_RATE_API_KEY")
+        api_token = os.getenv("apikey")
+        if not api_token:
+            print("API token missing")
+            return 0.0
 
-        url = "https://api.apilayer.com/exchangerates_data/convert"
+        # url = f"https://v6.exchangerate-api.com/v6/{api_token}/latest/RUB"
+        url = "https://api.apilayer.com/exchangerates_data/latest?symbols=USD%2C%20EUR&base=RUB"
+        headers = {"apikey": api_token}
+        response = requests.request("GET", url, headers=headers)
 
-        headers = {
-            "apikey": "WkzH6EmMSSbRCQkuUkGoT2E1n6K5wTKi"
-        }
+        if response.status_code != 200:
+            print(response.status_code)
+            raise ValueError("Failed to get currency rate")
 
-        url = f"https://v6.exchangerate-api.com/v6/{api_token}/latest/RUB"
-        headers = {"apikey": f"{api_token}"}
+        # response.raise_for_status()
+        data = response.json()
+        currency_data_usd = data["rates"].get("USD")
+        if not currency_data_usd:
+            raise ValueError("No data for currency USD")
 
-        response = requests.get(url, headers=headers)
-        repos = response.json()
+        currency_data_eur = data["rates"].get("EUR")
+        if not currency_data_eur:
+            raise ValueError("No data for currency EUR")
 
-        # status_code = response.status_code
-        usb_rub = round(1 / repos["conversion_rates"]["USD"], 2)
-        eur_rub = round(1 / repos["conversion_rates"]["EUR"], 2)
-        if currency == "USD":
-            return amount * usb_rub
-        elif currency == "EUR":
-            return amount * eur_rub
-    except KeyError:
-        # действия если ключа нет
+        # usd_to_rub = round(1 / data["conversion_rates"]["USD"], 2)
+        # eur_to_rub = round(1 / data["conversion_rates"]["EUR"], 2)
+        usd_to_rub = 1 / float(currency_data_usd)
+        eur_to_rub = 1 / float(currency_data_eur)
+
+        s_amount_usd = 0.0
+        s_amount_eur = 0.0
+        for t in transactions:
+            op_amount = t.get("operationAmount")
+            # print(op_amount)
+            if op_amount and "amount" in op_amount and "currency" in op_amount:
+                currency = op_amount["currency"]
+                if currency and "code" in currency:
+                    if currency["code"] == "USD":
+                        s_amount_usd += float(op_amount["amount"])
+                    if currency["code"] == "EUR":
+                        s_amount_eur += float(op_amount["amount"])
+
+        s_amount = s_amount_usd * usd_to_rub
+        s_amount += s_amount_eur * eur_to_rub
+
+    except (KeyError, requests.RequestException, ValueError) as e:
+        print(f"Error during conversion: {e}")
         pass
-    return 0.0
+    except FileNotFoundError:
+        print("File .env not found. Check the path.")
+    except JSONDecodeError:
+        print("JSONDecodeError JSON from requests.")
+
+    return s_amount
