@@ -76,6 +76,7 @@ def test_convert_to_rub_correct_conversion(mock_getenv, mock_request):
     expected = 10 / 0.013 + 20 / 0.011
     assert abs(result - expected) < 0.01
 
+
 ##
 
 
@@ -91,7 +92,9 @@ def test_calc_amount_with_usd_eur_rub(mock_load_dotenv, mock_getenv, mock_reques
 
     mock_getenv.return_value = "test_api_key"
     mock_request.return_value.status_code = 200
-    mock_request.return_value.json.return_value = {"rates": {"USD": "0.013", "EUR": "0.011"}}
+    mock_request.return_value.json.return_value = {
+        "rates": {"USD": "0.013", "EUR": "0.011"}
+    }
 
     result = calc_amount(transactions)
 
